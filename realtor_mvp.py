@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import json
 import asyncio
+import os
 
 app = FastAPI(title="Realtor AI MVP")
 
@@ -22,11 +23,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# CLI Wrapper Proxy URL
-CLI_WRAPPER_URL = "http://localhost:8001/v1/chat/completions"
+# CLI Wrapper Proxy URL (configurable via environment)
+CLI_WRAPPER_URL = os.getenv(
+    "CLI_WRAPPER_URL",
+    "http://localhost:8001/v1/chat/completions"
+)
 
 async def generate_description(listing_data: dict) -> str:
-    """Generate MLS listing description using claude-cli-agent via proxy"""
+    """Generate MLS listing description using Claude API or CLI wrapper"""
 
     prompt = f"""You are a professional real estate copywriter. Write a compelling MLS listing description.
 
@@ -58,14 +62,15 @@ Make it persuasive, professional, and perfect for MLS."""
                     "model": "claude",
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.7
-                }
+                },
+                headers={"Content-Type": "application/json"}
             )
 
             if response.status_code == 200:
                 data = response.json()
                 return data['choices'][0]['message']['content']
             else:
-                raise Exception(f"Proxy returned {response.status_code}: {response.text}")
+                raise Exception(f"API returned {response.status_code}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate description: {str(e)}")
 
