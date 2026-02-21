@@ -11,6 +11,7 @@ import httpx
 import json
 import asyncio
 import os
+import subprocess
 
 app = FastAPI(title="Realtor AI MVP")
 
@@ -29,8 +30,45 @@ CLI_WRAPPER_URL = os.getenv(
     "http://localhost:8001/v1/chat/completions"
 )
 
+async def call_claude(prompt: str) -> str:
+    """Call Claude via CLI wrapper, with fallback to Claude CLI directly"""
+    try:
+        # Try CLI wrapper proxy first
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                CLI_WRAPPER_URL,
+                json={
+                    "model": "claude",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.7
+                },
+                headers={"Content-Type": "application/json"}
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return data['choices'][0]['message']['content']
+    except:
+        pass
+
+    # Fallback to Claude CLI directly
+    try:
+        result = subprocess.run(
+            ["claude", "message", prompt],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except:
+        pass
+
+    # If all else fails, return error
+    raise Exception("Unable to reach Claude API")
+
 async def generate_description(listing_data: dict) -> str:
-    """Generate MLS listing description using Claude API or CLI wrapper"""
+    """Generate MLS listing description using Claude"""
 
     prompt = f"""You are a professional real estate copywriter. Write a compelling MLS listing description.
 
@@ -55,22 +93,7 @@ Write a captivating 3-4 paragraph listing description that:
 Make it persuasive, professional, and perfect for MLS."""
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                CLI_WRAPPER_URL,
-                json={
-                    "model": "claude",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.7
-                },
-                headers={"Content-Type": "application/json"}
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                return data['choices'][0]['message']['content']
-            else:
-                raise Exception(f"API returned {response.status_code}")
+        return await call_claude(prompt)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate description: {str(e)}")
 
@@ -98,21 +121,7 @@ Provide a brief CMA report that includes:
 Make it professional and suitable for MLS presentation."""
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                CLI_WRAPPER_URL,
-                json={
-                    "model": "claude",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.5
-                }
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                return data['choices'][0]['message']['content']
-            else:
-                raise Exception(f"Proxy returned {response.status_code}")
+        return await call_claude(prompt)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate CMA: {str(e)}")
 
@@ -139,21 +148,7 @@ Write a warm, personalized follow-up email that:
 Make it compelling and personal."""
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                CLI_WRAPPER_URL,
-                json={
-                    "model": "claude",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.7
-                }
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                return data['choices'][0]['message']['content']
-            else:
-                raise Exception(f"Proxy returned {response.status_code}")
+        return await call_claude(prompt)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate email: {str(e)}")
 
